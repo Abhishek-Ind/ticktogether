@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shared Timer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="hero-icon" aria-hidden="true">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="13" r="8"></circle>
+            <path d="M12 9v4l3 2"></path>
+          </svg>
+        </div>
+        <h1>Shared Timer</h1>
+        <p>Set timers that ring on everyone’s device</p>
+      </section>
+
+      <section class="card">
+        <h2>Create a Group</h2>
+        <p>Start a new timer group and invite others</p>
+        <form class="stacked-form" action="#" method="post">
+          <input type="text" placeholder="Group name (e.g., Kitchen crew)" aria-label="Group name" />
+          <button type="submit" class="btn btn-primary">＋&nbsp; Create Group</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Join a Group</h2>
+        <p>Enter a group code to join</p>
+        <form class="stacked-form" action="#" method="post">
+          <input type="text" placeholder="ENTER GROUP CODE" class="code-input" aria-label="Group code" />
+          <button type="submit" class="btn btn-muted">→&nbsp; Join Group</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2 class="groups-title">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="8.5" cy="7" r="4" />
+            <path d="M20 8v6" />
+            <path d="M23 11h-6" />
+          </svg>
+          My Groups
+        </h2>
+        <p>Groups you’ve joined before</p>
+
+        <ul class="group-list">
+          <li>
+            <div>
+              <h3>Demo</h3>
+              <span>8AC03F</span>
+            </div>
+            <a href="#" class="arrow" aria-label="Open Demo group">→</a>
+          </li>
+          <li>
+            <div>
+              <h3>Demo Again</h3>
+              <span>E9FE43</span>
+            </div>
+            <a href="#" class="arrow" aria-label="Open Demo Again group">→</a>
+          </li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
