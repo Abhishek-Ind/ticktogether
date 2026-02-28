@@ -1,4 +1,5 @@
 const STORAGE_KEY = "ticktogether.sharedTimerState";
+const CURRENT_GROUP_KEY = "ticktogether.currentGroupCode";
 
 const createForm = document.querySelector("#create-form");
 const joinForm = document.querySelector("#join-form");
@@ -52,7 +53,8 @@ joinForm.addEventListener("submit", (event) => {
   }
 
   if (state.myGroupCodes.includes(code)) {
-    setStatus(`You're already in "${group.name}".`);
+    localStorage.setItem(CURRENT_GROUP_KEY, code);
+    window.location.href = `group.html?code=${code}`;
     return;
   }
 
@@ -61,6 +63,8 @@ joinForm.addEventListener("submit", (event) => {
   render();
   joinForm.reset();
   setStatus(`Joined "${group.name}" (${code}).`);
+  localStorage.setItem(CURRENT_GROUP_KEY, code);
+  window.location.href = `group.html?code=${code}`;
 });
 
 function loadState() {
@@ -123,13 +127,12 @@ function render() {
     const actions = document.createElement("div");
 
     const open = document.createElement("a");
-    open.href = "#";
+    open.href = `group.html?code=${group.code}`;
     open.className = "arrow";
     open.setAttribute("aria-label", `Open ${group.name}`);
     open.textContent = "→";
-    open.addEventListener("click", (event) => {
-      event.preventDefault();
-      setStatus(`Opened ${group.name} (${group.code}).`);
+    open.addEventListener("click", () => {
+      localStorage.setItem(CURRENT_GROUP_KEY, group.code);
     });
 
     const leave = document.createElement("button");
