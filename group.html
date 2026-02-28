@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Group Timers</title>
+    <link rel="stylesheet" href="group.css" />
+  </head>
+  <body>
+    <header class="group-header">
+      <div>
+        <h1 id="group-name">Demo</h1>
+        <p class="group-code-row">
+          <span id="group-code">8AC03F</span>
+          <button id="copy-code" class="icon-btn" type="button" aria-label="Copy group code">⧉</button>
+        </p>
+      </div>
+      <div class="header-actions">
+        <p><span id="member-count">0</span> members</p>
+        <button id="leave-group-top" class="icon-btn" type="button">Leave</button>
+      </div>
+    </header>
+
+    <main class="group-page">
+      <section>
+        <h2>Group Timers</h2>
+        <div id="active-alarms" class="card-stack"></div>
+      </section>
+
+      <section>
+        <h2>Members</h2>
+        <div id="member-list" class="chips"></div>
+      </section>
+
+      <section>
+        <h2>History</h2>
+        <div id="history-list" class="card-stack"></div>
+      </section>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </main>
+
+    <button id="open-modal" class="fab" type="button" aria-label="Create alarm">+</button>
+
+    <dialog id="timer-modal" class="modal">
+      <form id="alarm-form" class="modal-content" method="dialog">
+        <header class="modal-header">
+          <h3>Set a Timer</h3>
+          <button id="close-modal" type="button" class="icon-btn">✕</button>
+        </header>
+
+        <p>Choose duration, write an instruction, and select members.</p>
+
+        <h4>Duration</h4>
+        <div class="presets" id="preset-wrap">
+          <button type="button" data-minutes="1">1 min</button>
+          <button type="button" data-minutes="3">3 min</button>
+          <button type="button" data-minutes="5" class="active">5 min</button>
+          <button type="button" data-minutes="10">10 min</button>
+          <button type="button" data-minutes="15">15 min</button>
+        </div>
+
+        <div class="custom-time">
+          <input id="custom-min" type="number" min="0" max="99" value="5" />
+          <span>min</span>
+          <input id="custom-sec" type="number" min="0" max="59" value="0" />
+          <span>sec</span>
+        </div>
+
+        <label for="alarm-message" class="label">Instruction</label>
+        <textarea id="alarm-message" placeholder="e.g., Turn off the stove" maxlength="120"></textarea>
+
+        <div class="send-row">
+          <strong>Send to</strong>
+          <button id="select-all" type="button" class="text-btn">Select all</button>
+        </div>
+        <div id="recipient-list" class="recipient-list"></div>
+
+        <button id="start-timer" class="start-btn" type="submit">Start Timer</button>
+      </form>
+    </dialog>
+
+    <script src="group.js"></script>
+  </body>
+</html>
