@@ -258,6 +258,41 @@ textarea {
   align-items: center;
 }
 
+.alarm-popup {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+}
+
+.hidden {
+  display: none;
+}
+
+.alarm-popup-card {
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  width: min(520px, 90vw);
+  padding: 24px;
+}
+
+.alarm-popup-card h3 {
+  margin: 0 0 8px;
+}
+
+.alarm-popup-card p {
+  margin: 0 0 14px;
+  color: var(--muted);
+}
+
+.alarm-popup-actions {
+  display: grid;
+  gap: 10px;
+}
+
 @media (max-width: 700px) {
   .alarm-card {
     grid-template-columns: 1fr;

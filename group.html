@@ -80,6 +80,17 @@
       </form>
     </dialog>
 
+    <section id="alarm-popup" class="alarm-popup hidden" aria-live="assertive" role="alertdialog" aria-modal="true">
+      <div class="alarm-popup-card">
+        <h3>⏰ Alarm ringing</h3>
+        <p id="alarm-popup-message">Timer is complete.</p>
+        <div class="alarm-popup-actions">
+          <button id="task-done" type="button" class="start-btn">Task done</button>
+          <button id="mute-alarm" type="button" class="text-btn">Mute alarm</button>
+        </div>
+      </div>
+    </section>
+
     <script src="group.js"></script>
   </body>
 </html>

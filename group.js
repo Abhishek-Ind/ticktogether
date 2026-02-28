@@ -1,6 +1,7 @@
 const APP_STATE_KEY = "ticktogether.sharedTimerState";
 const CURRENT_GROUP_KEY = "ticktogether.currentGroupCode";
 const GROUP_DATA_PREFIX = "ticktogether.groupData.";
+const DEVICE_ID_KEY = "ticktogether.deviceId";
 
 const groupNameEl = document.querySelector("#group-name");
 const groupCodeEl = document.querySelector("#group-code");
@@ -23,12 +24,33 @@ const messageInput = document.querySelector("#alarm-message");
 const recipientListEl = document.querySelector("#recipient-list");
 const selectAllButton = document.querySelector("#select-all");
 
+const alarmPopupEl = document.querySelector("#alarm-popup");
+const alarmPopupMessageEl = document.querySelector("#alarm-popup-message");
+const taskDoneButton = document.querySelector("#task-done");
+const muteAlarmButton = document.querySelector("#mute-alarm");
+
+const deviceId = ensureDeviceId();
 const state = loadAppState();
 const group = getActiveGroup();
 let groupData = loadGroupData(group.code);
+let ringingAlarmId = null;
+let alarmAudioContext;
+let alarmOscillator;
+let alarmGain;
 
 renderAll();
 startTicker();
+syncPopupWithCurrentState();
+
+window.addEventListener("click", unlockAudio, { once: true });
+window.addEventListener("keydown", unlockAudio, { once: true });
+window.addEventListener("storage", (event) => {
+  if (event.key === `${GROUP_DATA_PREFIX}${group.code}`) {
+    groupData = loadGroupData(group.code);
+    renderAll();
+    syncPopupWithCurrentState();
+  }
+});
 
 openModalButton.addEventListener("click", () => {
   modal.showModal();
@@ -83,7 +105,9 @@ alarmForm.addEventListener("submit", (event) => {
     recipients: selectedRecipients,
     totalSec: durationSec,
     remainingSec: durationSec,
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    status: "running",
+    mutedBy: []
   };
 
   groupData.activeAlarms.unshift(alarm);
@@ -94,6 +118,37 @@ alarmForm.addEventListener("submit", (event) => {
   customMinInput.value = "5";
   customSecInput.value = "0";
   modal.close();
+});
+
+taskDoneButton.addEventListener("click", () => {
+  const alarm = getCurrentRingingAlarm();
+  if (!alarm) {
+    hideAlarmPopup();
+    return;
+  }
+
+  completeAlarmForEveryone(alarm, "You");
+  setStatus(`Task completed for "${alarm.message}" by You.`);
+});
+
+muteAlarmButton.addEventListener("click", () => {
+  const alarm = getCurrentRingingAlarm();
+  if (!alarm) {
+    hideAlarmPopup();
+    return;
+  }
+
+  if (!Array.isArray(alarm.mutedBy)) {
+    alarm.mutedBy = [];
+  }
+  if (!alarm.mutedBy.includes(deviceId)) {
+    alarm.mutedBy.push(deviceId);
+  }
+
+  persistGroupData();
+  renderAlarms();
+  syncPopupWithCurrentState();
+  setStatus(`Muted alarm on this device for "${alarm.message}".`);
 });
 
 leaveTopButton.addEventListener("click", leaveGroup);
@@ -150,53 +205,54 @@ function getActiveGroup() {
 
 function loadGroupData(code) {
   const raw = localStorage.getItem(`${GROUP_DATA_PREFIX}${code}`);
-  const seedMembers = ["Abhishek", "Ishna", "Ammaar", "Abhishek", "Shristy"];
+  const defaultMembers = ["You", "Abhishek", "Ishna", "Ammaar", "Shristy"];
 
   if (!raw) {
-    return {
-      members: seedMembers,
-      activeAlarms: [
-        {
-          id: crypto.randomUUID(),
-          message: "testing alarm",
-          createdBy: "Abhishek",
-          recipients: ["Abhishek", "Shristy"],
-          totalSec: 60,
-          remainingSec: 48,
-          createdAt: Date.now() - 10000
-        }
-      ],
-      history: [
-        {
-          id: crypto.randomUUID(),
-          message: "Motor bnd kar dena",
-          createdBy: "Abhishek",
-          recipients: ["Shristu"],
-          durationSec: 10,
-          createdAt: Date.now() - 86400000
-        },
-        {
-          id: crypto.randomUUID(),
-          message: "Demo",
-          createdBy: "Shristy",
-          recipients: ["Abhishek", "Abhishek"],
-          durationSec: 20,
-          createdAt: Date.now() - 172800000
-        }
-      ]
+    const initialData = {
+      members: [...defaultMembers],
+      activeAlarms: [],
+      history:
+        code === "8AC03F"
+          ? [
+              {
+                id: crypto.randomUUID(),
+                message: "Welcome timer",
+                createdBy: "Abhishek",
+                recipients: ["You", "Ishna"],
+                durationSec: 20,
+                completedBy: "Abhishek",
+                createdAt: Date.now() - 172800000
+              }
+            ]
+          : []
     };
+    localStorage.setItem(`${GROUP_DATA_PREFIX}${code}`, JSON.stringify(initialData));
+    return initialData;
   }
 
   try {
     const parsed = JSON.parse(raw);
     return {
-      members: Array.isArray(parsed.members) ? parsed.members : seedMembers,
-      activeAlarms: Array.isArray(parsed.activeAlarms) ? parsed.activeAlarms : [],
+      members: Array.isArray(parsed.members) ? parsed.members : defaultMembers,
+      activeAlarms: Array.isArray(parsed.activeAlarms)
+        ? parsed.activeAlarms.map((alarm) => normalizeAlarm(alarm))
+        : [],
       history: Array.isArray(parsed.history) ? parsed.history : []
     };
   } catch {
-    return { members: seedMembers, activeAlarms: [], history: [] };
+    return { members: defaultMembers, activeAlarms: [], history: [] };
   }
+}
+
+function normalizeAlarm(alarm) {
+  const remainingSec = Number(alarm.remainingSec || 0);
+  return {
+    ...alarm,
+    remainingSec,
+    totalSec: Number(alarm.totalSec || remainingSec || 0),
+    status: alarm.status || (remainingSec > 0 ? "running" : "ringing"),
+    mutedBy: Array.isArray(alarm.mutedBy) ? alarm.mutedBy : []
+  };
 }
 
 function persistGroupData() {
@@ -242,11 +298,12 @@ function renderAlarms() {
   groupData.activeAlarms.forEach((alarm) => {
     const card = document.createElement("article");
     card.className = "alarm-card";
+    const stateText = alarm.status === "ringing" ? "RINGING" : "RUNNING";
     card.innerHTML = `
       <div class="timer-ring">${formatDuration(alarm.remainingSec)}</div>
       <div>
         <h3 class="alarm-title">${escapeHtml(alarm.message)}</h3>
-        <p class="meta">by ${escapeHtml(alarm.createdBy)}</p>
+        <p class="meta">${stateText} · by ${escapeHtml(alarm.createdBy)}</p>
         <div class="chips">${alarm.recipients
           .map((recipient) => `<span class="chip">${escapeHtml(recipient)}</span>`)
           .join("")}</div>
@@ -262,12 +319,13 @@ function renderHistory() {
   groupData.history.forEach((entry) => {
     const card = document.createElement("article");
     card.className = "history-card";
+    const doneByText = entry.completedBy ? ` · task done by ${escapeHtml(entry.completedBy)}` : "";
     card.innerHTML = `
       <div class="inline-row">
         <h3 class="history-title">${escapeHtml(entry.message)}</h3>
         <p class="meta">${formatDuration(entry.durationSec)}</p>
       </div>
-      <p class="meta">by ${escapeHtml(entry.createdBy)} · ${formatRelative(entry.createdAt)}</p>
+      <p class="meta">by ${escapeHtml(entry.createdBy)} · ${formatRelative(entry.createdAt)}${doneByText}</p>
       <div class="chips">${entry.recipients
         .map((recipient) => `<span class="chip">${escapeHtml(recipient)}</span>`)
         .join("")}</div>
@@ -278,42 +336,162 @@ function renderHistory() {
 
 function startTicker() {
   window.setInterval(() => {
+    if (!groupData.activeAlarms.length) {
+      syncPopupWithCurrentState();
+      return;
+    }
+
     let changed = false;
     groupData.activeAlarms.forEach((alarm) => {
-      if (alarm.remainingSec > 0) {
+      if (alarm.status === "running" && alarm.remainingSec > 0) {
         alarm.remainingSec -= 1;
+        changed = true;
+      }
+
+      if (alarm.status === "running" && alarm.remainingSec <= 0) {
+        alarm.remainingSec = 0;
+        alarm.status = "ringing";
+        alarm.mutedBy = Array.isArray(alarm.mutedBy) ? alarm.mutedBy : [];
         changed = true;
       }
     });
 
-    const finished = groupData.activeAlarms.filter((alarm) => alarm.remainingSec <= 0);
-    if (finished.length) {
-      finished.forEach((alarm) => {
-        groupData.history.unshift({
-          id: alarm.id,
-          message: alarm.message,
-          createdBy: alarm.createdBy,
-          recipients: alarm.recipients,
-          durationSec: alarm.totalSec,
-          createdAt: Date.now()
-        });
-      });
-      groupData.activeAlarms = groupData.activeAlarms.filter((alarm) => alarm.remainingSec > 0);
-      changed = true;
-    }
-
     if (changed) {
       persistGroupData();
       renderAlarms();
-      renderHistory();
     }
+
+    syncPopupWithCurrentState();
   }, 1000);
+}
+
+function syncPopupWithCurrentState() {
+  const alarm = getCurrentRingingAlarm();
+  if (!alarm) {
+    hideAlarmPopup();
+    return;
+  }
+
+  ringingAlarmId = alarm.id;
+  alarmPopupMessageEl.textContent = `"${alarm.message}" is ringing for ${formatDuration(
+    alarm.totalSec
+  )}.`; 
+  alarmPopupEl.classList.remove("hidden");
+  startLocalAlarmTone();
+}
+
+function getCurrentRingingAlarm() {
+  return groupData.activeAlarms.find((alarm) => {
+    if (alarm.status !== "ringing") {
+      return false;
+    }
+    const mutedBy = Array.isArray(alarm.mutedBy) ? alarm.mutedBy : [];
+    return !mutedBy.includes(deviceId);
+  });
+}
+
+function completeAlarmForEveryone(alarm, completedBy) {
+  groupData.history.unshift({
+    id: alarm.id,
+    message: alarm.message,
+    createdBy: alarm.createdBy,
+    recipients: alarm.recipients,
+    durationSec: alarm.totalSec,
+    completedBy,
+    createdAt: Date.now()
+  });
+
+  groupData.activeAlarms = groupData.activeAlarms.filter((entry) => entry.id !== alarm.id);
+  persistGroupData();
+  renderAlarms();
+  renderHistory();
+  hideAlarmPopup();
+}
+
+function hideAlarmPopup() {
+  ringingAlarmId = null;
+  alarmPopupEl.classList.add("hidden");
+  stopLocalAlarmTone();
+}
+
+function unlockAudio() {
+  ensureAudioContext();
+  if (!alarmAudioContext) {
+    return;
+  }
+
+  if (alarmAudioContext.state === "suspended") {
+    alarmAudioContext.resume().catch(() => {
+      // ignore
+    });
+  }
+}
+
+function ensureAudioContext() {
+  if (alarmAudioContext) {
+    return;
+  }
+  if (!window.AudioContext && !window.webkitAudioContext) {
+    return;
+  }
+
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  alarmAudioContext = new Ctx();
+}
+
+function startLocalAlarmTone() {
+  ensureAudioContext();
+  if (!alarmAudioContext) {
+    return;
+  }
+  if (alarmOscillator) {
+    return;
+  }
+
+  if (alarmAudioContext.state === "suspended") {
+    alarmAudioContext.resume().catch(() => {
+      // user gesture may be needed
+    });
+  }
+
+  alarmOscillator = alarmAudioContext.createOscillator();
+  alarmGain = alarmAudioContext.createGain();
+  alarmOscillator.type = "sine";
+  alarmOscillator.frequency.value = 880;
+  alarmGain.gain.value = 0.12;
+  alarmOscillator.connect(alarmGain);
+  alarmGain.connect(alarmAudioContext.destination);
+  alarmOscillator.start();
+}
+
+function stopLocalAlarmTone() {
+  if (!alarmOscillator) {
+    return;
+  }
+
+  alarmOscillator.stop();
+  alarmOscillator.disconnect();
+  alarmGain.disconnect();
+  alarmOscillator = null;
+  alarmGain = null;
+}
+
+function ensureDeviceId() {
+  const existing = localStorage.getItem(DEVICE_ID_KEY);
+  if (existing) {
+    return existing;
+  }
+
+  const created = crypto.randomUUID();
+  localStorage.setItem(DEVICE_ID_KEY, created);
+  return created;
 }
 
 function leaveGroup() {
   state.myGroupCodes = state.myGroupCodes.filter((entry) => entry !== group.code);
   localStorage.setItem(APP_STATE_KEY, JSON.stringify(state));
   localStorage.removeItem(CURRENT_GROUP_KEY);
+  stopLocalAlarmTone();
   window.location.href = "index.html";
 }
 

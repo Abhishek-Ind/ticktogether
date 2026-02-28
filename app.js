@@ -35,6 +35,9 @@ createForm.addEventListener("submit", (event) => {
   render();
   createForm.reset();
   setStatus(`Created "${groupName}" with code ${code}.`);
+
+  localStorage.setItem(CURRENT_GROUP_KEY, code);
+  window.location.href = `group.html?code=${code}`;
 });
 
 joinForm.addEventListener("submit", (event) => {
@@ -52,17 +55,14 @@ joinForm.addEventListener("submit", (event) => {
     return;
   }
 
-  if (state.myGroupCodes.includes(code)) {
-    localStorage.setItem(CURRENT_GROUP_KEY, code);
-    window.location.href = `group.html?code=${code}`;
-    return;
+  if (!state.myGroupCodes.includes(code)) {
+    state.myGroupCodes.unshift(code);
+    persistState();
+    render();
+    joinForm.reset();
+    setStatus(`Joined "${group.name}" (${code}).`);
   }
 
-  state.myGroupCodes.unshift(code);
-  persistState();
-  render();
-  joinForm.reset();
-  setStatus(`Joined "${group.name}" (${code}).`);
   localStorage.setItem(CURRENT_GROUP_KEY, code);
   window.location.href = `group.html?code=${code}`;
 });
