@@ -8,16 +8,30 @@
   </head>
   <body>
     <header class="group-header">
-      <div>
+      <div class="header-left">
+        <a href="index.html" class="icon-btn nav-icon-btn" aria-label="Back to groups">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 18 9 12 15 6"></polyline>
+            <line x1="20" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </a>
+        <div>
         <h1 id="group-name">Demo</h1>
         <p class="group-code-row">
           <span id="group-code">8AC03F</span>
           <button id="copy-code" class="icon-btn" type="button" aria-label="Copy group code">⧉</button>
         </p>
+        </div>
       </div>
       <div class="header-actions">
         <p><span id="member-count">0</span> members</p>
-        <button id="leave-group-top" class="icon-btn" type="button">Leave</button>
+        <button id="leave-group-top" class="icon-btn exit-icon-btn" type="button" aria-label="Leave group">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -68,7 +82,7 @@
         </div>
 
         <label for="alarm-message" class="label">Instruction</label>
-        <textarea id="alarm-message" placeholder="e.g., Turn off the stove" maxlength="120"></textarea>
+        <textarea id="alarm-message" placeholder="Eg Turn Off The Stove" maxlength="120"></textarea>
 
         <div class="send-row">
           <strong>Send to</strong>
@@ -76,7 +90,7 @@
         </div>
         <div id="recipient-list" class="recipient-list"></div>
 
-        <button id="start-timer" class="start-btn" type="submit">Start Timer</button>
+        <button id="start-timer" class="start-btn" type="submit" disabled>Start Timer</button>
       </form>
     </dialog>
 
@@ -91,6 +105,12 @@
       </div>
     </section>
 
-    <script src="group.js"></script>
+    
+    <script>
+  window.__SUPABASE_URL__ = "https://ojuouvfractsloqozlyh.supabase.co";
+  window.__SUPABASE_ANON_KEY__ = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdW91dmZyYWN0c2xvcW96bHloIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNDcyNTYsImV4cCI6MjA4NzkyMzI1Nn0.cxaxSlZ7YpQohAT-dvujjvYzo8uRBExolakCoV-AExY";
+</script>
+<script src="group.js"></script>
   </body>
 </html>
+

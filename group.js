@@ -1,7 +1,8 @@
-const APP_STATE_KEY = "ticktogether.sharedTimerState";
+import { supabase, ensureSession } from "./supabaseClient.js";
+
 const CURRENT_GROUP_KEY = "ticktogether.currentGroupCode";
-const GROUP_DATA_PREFIX = "ticktogether.groupData.";
 const DEVICE_ID_KEY = "ticktogether.deviceId";
+const DEVICE_MEMBER_NAME_KEY = "ticktogether.deviceMemberName";
 
 const groupNameEl = document.querySelector("#group-name");
 const groupCodeEl = document.querySelector("#group-code");
@@ -23,46 +24,71 @@ const customSecInput = document.querySelector("#custom-sec");
 const messageInput = document.querySelector("#alarm-message");
 const recipientListEl = document.querySelector("#recipient-list");
 const selectAllButton = document.querySelector("#select-all");
+const startTimerButton = document.querySelector("#start-timer");
 
 const alarmPopupEl = document.querySelector("#alarm-popup");
 const alarmPopupMessageEl = document.querySelector("#alarm-popup-message");
 const taskDoneButton = document.querySelector("#task-done");
 const muteAlarmButton = document.querySelector("#mute-alarm");
 
+let authUser = null;
 const deviceId = ensureDeviceId();
-const state = loadAppState();
-const group = getActiveGroup();
-let groupData = loadGroupData(group.code);
+const currentMemberName = getCurrentMemberNameOrRedirect();
+
+let group = null;
+let members = [];
+let alarms = [];
 let ringingAlarmId = null;
 let alarmAudioContext;
 let alarmOscillator;
 let alarmGain;
+let realtimeChannel = null;
 
-renderAll();
-startTicker();
-syncPopupWithCurrentState();
+await init();
+
+async function init() {
+  try {
+    await ensureSession();
+    const {
+      data: { user },
+      error
+    } = await supabase.auth.getUser();
+
+    if (error || !user) {
+      throw error || new Error("Could not load auth user.");
+    }
+
+    authUser = user;
+    group = await getActiveGroupFromDb();
+    groupNameEl.textContent = group.name;
+    groupCodeEl.textContent = group.code;
+
+    await ensureCurrentMemberJoined();
+    await refreshAll();
+    subscribeRealtime();
+    startTicker();
+    syncPopupWithCurrentState();
+    updateStartTimerButton();
+  } catch (error) {
+    setStatus(error.message);
+    window.location.href = "index.html";
+  }
+}
 
 window.addEventListener("click", unlockAudio, { once: true });
 window.addEventListener("keydown", unlockAudio, { once: true });
-window.addEventListener("storage", (event) => {
-  if (event.key === `${GROUP_DATA_PREFIX}${group.code}`) {
-    groupData = loadGroupData(group.code);
-    renderAll();
-    syncPopupWithCurrentState();
+window.addEventListener("beforeunload", () => {
+  if (realtimeChannel) {
+    supabase.removeChannel(realtimeChannel);
   }
 });
 
-openModalButton.addEventListener("click", () => {
-  modal.showModal();
-});
-
+openModalButton.addEventListener("click", () => modal.showModal());
 closeModalButton.addEventListener("click", () => modal.close());
 
 presetWrap.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-minutes]");
-  if (!button) {
-    return;
-  }
+  if (!button) return;
 
   const minutes = Number(button.dataset.minutes || 0);
   customMinInput.value = String(minutes);
@@ -70,7 +96,13 @@ presetWrap.addEventListener("click", (event) => {
 
   [...presetWrap.querySelectorAll("button")].forEach((entry) => entry.classList.remove("active"));
   button.classList.add("active");
+  updateStartTimerButton();
 });
+
+customMinInput.addEventListener("input", updateStartTimerButton);
+customSecInput.addEventListener("input", updateStartTimerButton);
+messageInput.addEventListener("input", updateStartTimerButton);
+recipientListEl.addEventListener("change", updateStartTimerButton);
 
 selectAllButton.addEventListener("click", () => {
   const checkboxes = recipientListEl.querySelectorAll("input[type='checkbox']");
@@ -78,9 +110,10 @@ selectAllButton.addEventListener("click", () => {
   checkboxes.forEach((box) => {
     box.checked = shouldSelect;
   });
+  updateStartTimerButton();
 });
 
-alarmForm.addEventListener("submit", (event) => {
+alarmForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const durationSec = Number(customMinInput.value || 0) * 60 + Number(customSecInput.value || 0);
@@ -92,62 +125,78 @@ alarmForm.addEventListener("submit", (event) => {
   const selectedRecipients = [...recipientListEl.querySelectorAll("input[type='checkbox']:checked")].map(
     (entry) => entry.value
   );
-
   if (!selectedRecipients.length) {
     setStatus("Select at least one member to send the alarm.");
     return;
   }
 
-  const alarm = {
-    id: crypto.randomUUID(),
-    message: messageInput.value.trim() || "Untitled alarm",
-    createdBy: "You",
-    recipients: selectedRecipients,
-    totalSec: durationSec,
-    remainingSec: durationSec,
-    createdAt: Date.now(),
-    status: "running",
-    mutedBy: []
-  };
+  const endsAt = new Date(Date.now() + durationSec * 1000).toISOString();
 
-  groupData.activeAlarms.unshift(alarm);
-  persistGroupData();
-  renderAlarms();
+  const { error } = await supabase.from("alarms").insert({
+    group_code: group.code,
+    message: messageInput.value.trim() || "Untitled alarm",
+    created_by_name: currentMemberName,
+    created_by_user_id: authUser.id,
+    recipients: selectedRecipients,
+    total_sec: durationSec,
+    ends_at: endsAt,
+    status: "running",
+    muted_by: []
+  });
+
+  if (error) {
+    setStatus(error.message);
+    return;
+  }
+
   setStatus(`Timer created for ${formatDuration(durationSec)}.`);
   alarmForm.reset();
   customMinInput.value = "5";
   customSecInput.value = "0";
+  updateStartTimerButton();
   modal.close();
 });
 
-taskDoneButton.addEventListener("click", () => {
+taskDoneButton.addEventListener("click", async () => {
   const alarm = getCurrentRingingAlarm();
   if (!alarm) {
     hideAlarmPopup();
     return;
   }
 
-  completeAlarmForEveryone(alarm, "You");
-  setStatus(`Task completed for "${alarm.message}" by You.`);
+  const { error } = await supabase
+    .from("alarms")
+    .update({
+      status: "completed",
+      completed_by_name: currentMemberName,
+      completed_at: new Date().toISOString()
+    })
+    .eq("id", alarm.id);
+
+  if (error) {
+    setStatus(error.message);
+    return;
+  }
+
+  setStatus(`Task completed for "${alarm.message}" by ${currentMemberName}.`);
 });
 
-muteAlarmButton.addEventListener("click", () => {
+muteAlarmButton.addEventListener("click", async () => {
   const alarm = getCurrentRingingAlarm();
   if (!alarm) {
     hideAlarmPopup();
     return;
   }
 
-  if (!Array.isArray(alarm.mutedBy)) {
-    alarm.mutedBy = [];
-  }
-  if (!alarm.mutedBy.includes(deviceId)) {
-    alarm.mutedBy.push(deviceId);
+  const muted = Array.isArray(alarm.muted_by) ? [...alarm.muted_by] : [];
+  if (!muted.includes(deviceId)) muted.push(deviceId);
+
+  const { error } = await supabase.from("alarms").update({ muted_by: muted }).eq("id", alarm.id);
+  if (error) {
+    setStatus(error.message);
+    return;
   }
 
-  persistGroupData();
-  renderAlarms();
-  syncPopupWithCurrentState();
   setStatus(`Muted alarm on this device for "${alarm.message}".`);
 });
 
@@ -162,106 +211,113 @@ copyCodeButton.addEventListener("click", async () => {
   }
 });
 
-function loadAppState() {
-  const raw = localStorage.getItem(APP_STATE_KEY);
-  const fallback = {
-    availableGroups: [
-      { code: "8AC03F", name: "Demo" },
-      { code: "E9FE43", name: "Demo Again" }
-    ],
-    myGroupCodes: ["8AC03F", "E9FE43"]
-  };
-
-  if (!raw) {
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed.availableGroups || !parsed.myGroupCodes) {
-      return fallback;
-    }
-    return parsed;
-  } catch {
-    return fallback;
-  }
-}
-
-function getActiveGroup() {
+async function getActiveGroupFromDb() {
   const params = new URLSearchParams(window.location.search);
   const paramCode = params.get("code")?.toUpperCase();
   const savedCode = localStorage.getItem(CURRENT_GROUP_KEY)?.toUpperCase();
-  const code = paramCode || savedCode || state.myGroupCodes[0];
-  const activeGroup = state.availableGroups.find((entry) => entry.code === code);
+  const code = paramCode || savedCode;
 
-  if (!activeGroup || !state.myGroupCodes.includes(activeGroup.code)) {
-    window.location.href = "index.html";
-    throw new Error("Not in this group");
+  if (!code) {
+    throw new Error("No group selected.");
   }
 
-  localStorage.setItem(CURRENT_GROUP_KEY, activeGroup.code);
-  return activeGroup;
-}
+  const { data: membership, error: memErr } = await supabase
+    .from("group_members")
+    .select("group_code")
+    .eq("group_code", code)
+    .eq("user_id", authUser.id)
+    .maybeSingle();
 
-function loadGroupData(code) {
-  const raw = localStorage.getItem(`${GROUP_DATA_PREFIX}${code}`);
-  const defaultMembers = ["You", "Abhishek", "Ishna", "Ammaar", "Shristy"];
-
-  if (!raw) {
-    const initialData = {
-      members: [...defaultMembers],
-      activeAlarms: [],
-      history:
-        code === "8AC03F"
-          ? [
-              {
-                id: crypto.randomUUID(),
-                message: "Welcome timer",
-                createdBy: "Abhishek",
-                recipients: ["You", "Ishna"],
-                durationSec: 20,
-                completedBy: "Abhishek",
-                createdAt: Date.now() - 172800000
-              }
-            ]
-          : []
-    };
-    localStorage.setItem(`${GROUP_DATA_PREFIX}${code}`, JSON.stringify(initialData));
-    return initialData;
+  if (memErr || !membership) {
+    throw new Error("You are not a member of this group.");
   }
 
-  try {
-    const parsed = JSON.parse(raw);
-    return {
-      members: Array.isArray(parsed.members) ? parsed.members : defaultMembers,
-      activeAlarms: Array.isArray(parsed.activeAlarms)
-        ? parsed.activeAlarms.map((alarm) => normalizeAlarm(alarm))
-        : [],
-      history: Array.isArray(parsed.history) ? parsed.history : []
-    };
-  } catch {
-    return { members: defaultMembers, activeAlarms: [], history: [] };
+  const { data: groupRow, error: groupErr } = await supabase
+    .from("groups")
+    .select("code, name")
+    .eq("code", code)
+    .maybeSingle();
+
+  if (groupErr || !groupRow) {
+    throw new Error("Group not found.");
   }
+
+  localStorage.setItem(CURRENT_GROUP_KEY, groupRow.code);
+  return groupRow;
 }
 
-function normalizeAlarm(alarm) {
-  const remainingSec = Number(alarm.remainingSec || 0);
-  return {
-    ...alarm,
-    remainingSec,
-    totalSec: Number(alarm.totalSec || remainingSec || 0),
-    status: alarm.status || (remainingSec > 0 ? "running" : "ringing"),
-    mutedBy: Array.isArray(alarm.mutedBy) ? alarm.mutedBy : []
-  };
+async function ensureCurrentMemberJoined() {
+  const { data, error } = await supabase
+    .from("group_members")
+    .select("group_code, user_id")
+    .eq("group_code", group.code)
+    .eq("user_id", authUser.id)
+    .maybeSingle();
+
+  if (error || !data) {
+    throw new Error("Membership missing.");
+  }
+
+  await supabase
+    .from("group_members")
+    .update({ member_name: currentMemberName, device_id: deviceId })
+    .eq("group_code", group.code)
+    .eq("user_id", authUser.id);
 }
 
-function persistGroupData() {
-  localStorage.setItem(`${GROUP_DATA_PREFIX}${group.code}`, JSON.stringify(groupData));
+async function refreshAll() {
+  await Promise.all([refreshMembers(), refreshAlarms()]);
+  renderAll();
+}
+
+async function refreshMembers() {
+  const { data, error } = await supabase
+    .from("group_members")
+    .select("member_name, joined_at")
+    .eq("group_code", group.code)
+    .order("joined_at", { ascending: true });
+
+  if (error) throw error;
+  members = data || [];
+}
+
+async function refreshAlarms() {
+  const { data, error } = await supabase
+    .from("alarms")
+    .select("*")
+    .eq("group_code", group.code)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  alarms = data || [];
+}
+
+function subscribeRealtime() {
+  realtimeChannel = supabase
+    .channel(`group-${group.code}`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "group_members", filter: `group_code=eq.${group.code}` },
+      async () => {
+        await refreshMembers();
+        renderMembers();
+        updateStartTimerButton();
+      }
+    )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "alarms", filter: `group_code=eq.${group.code}` },
+      async () => {
+        await refreshAlarms();
+        renderAlarms();
+        renderHistory();
+        syncPopupWithCurrentState();
+      }
+    )
+    .subscribe();
 }
 
 function renderAll() {
-  groupNameEl.textContent = group.name;
-  groupCodeEl.textContent = group.code;
   renderMembers();
   renderAlarms();
   renderHistory();
@@ -269,100 +325,110 @@ function renderAll() {
 
 function renderMembers() {
   memberListEl.innerHTML = "";
-  groupData.members.forEach((member) => {
+  memberCountEl.textContent = `${members.length} member${members.length === 1 ? "" : "s"}`;
+
+  members.forEach((member) => {
     const chip = document.createElement("span");
     chip.className = "chip";
-    chip.textContent = member;
+    chip.textContent = member.member_name;
     memberListEl.append(chip);
   });
 
-  memberCountEl.textContent = String(groupData.members.length);
-
   recipientListEl.innerHTML = "";
-  groupData.members.forEach((member, index) => {
-    const id = `recipient-${index}`;
-    const row = document.createElement("label");
-    row.htmlFor = id;
-    row.innerHTML = `<input id="${id}" type="checkbox" value="${member}" checked /> ${member}`;
-    recipientListEl.append(row);
+  members.forEach((member, index) => {
+    const id = `member-${index}`;
+    const label = document.createElement("label");
+    label.className = "recipient-option";
+    label.innerHTML = `
+      <input id="${id}" type="checkbox" value="${escapeHtml(member.member_name)}" />
+      <span>${escapeHtml(member.member_name)}</span>
+    `;
+    recipientListEl.append(label);
   });
 }
 
 function renderAlarms() {
   activeAlarmsEl.innerHTML = "";
-  if (!groupData.activeAlarms.length) {
-    activeAlarmsEl.innerHTML = '<div class="alarm-card">No running timers.</div>';
-    return;
-  }
+  const active = alarms.filter((alarm) => alarm.status !== "completed");
 
-  groupData.activeAlarms.forEach((alarm) => {
+  if (!active.length) return;
+
+  active.forEach((alarm) => {
+    const remainingSec = getRemainingSec(alarm);
     const card = document.createElement("article");
     card.className = "alarm-card";
-    const stateText = alarm.status === "ringing" ? "RINGING" : "RUNNING";
     card.innerHTML = `
-      <div class="timer-ring">${formatDuration(alarm.remainingSec)}</div>
-      <div>
-        <h3 class="alarm-title">${escapeHtml(alarm.message)}</h3>
-        <p class="meta">${stateText} · by ${escapeHtml(alarm.createdBy)}</p>
-        <div class="chips">${alarm.recipients
-          .map((recipient) => `<span class="chip">${escapeHtml(recipient)}</span>`)
-          .join("")}</div>
+      <div class="inline-row">
+        <h3>${escapeHtml(alarm.message)}</h3>
+        <p class="timer">${formatDuration(remainingSec)}</p>
+      </div>
+      <p class="meta">by ${escapeHtml(alarm.created_by_name)}</p>
+      <div class="chips">${(alarm.recipients || []).map((r) => `<span class="chip">${escapeHtml(r)}</span>`).join("")}</div>
+      <div class="actions">
+        <button class="mini-btn stop-all" type="button">Stop For All</button>
       </div>
     `;
+
+    card.querySelector(".stop-all").addEventListener("click", async () => {
+      const { error } = await supabase
+        .from("alarms")
+        .update({
+          status: "completed",
+          completed_by_name: `${currentMemberName} (stopped)`,
+          completed_at: new Date().toISOString()
+        })
+        .eq("id", alarm.id);
+
+      if (error) {
+        setStatus(error.message);
+        return;
+      }
+
+      setStatus(`Stopped timer for all: "${alarm.message}".`);
+    });
+
     activeAlarmsEl.append(card);
   });
 }
 
 function renderHistory() {
   historyListEl.innerHTML = "";
+  const history = alarms.filter((alarm) => alarm.status === "completed");
 
-  groupData.history.forEach((entry) => {
+  history.forEach((entry) => {
+    const doneByText = entry.completed_by_name ? ` · task done by ${escapeHtml(entry.completed_by_name)}` : "";
     const card = document.createElement("article");
     card.className = "history-card";
-    const doneByText = entry.completedBy ? ` · task done by ${escapeHtml(entry.completedBy)}` : "";
     card.innerHTML = `
       <div class="inline-row">
         <h3 class="history-title">${escapeHtml(entry.message)}</h3>
-        <p class="meta">${formatDuration(entry.durationSec)}</p>
+        <p class="meta">${formatDuration(entry.total_sec || 0)}</p>
       </div>
-      <p class="meta">by ${escapeHtml(entry.createdBy)} · ${formatRelative(entry.createdAt)}${doneByText}</p>
-      <div class="chips">${entry.recipients
-        .map((recipient) => `<span class="chip">${escapeHtml(recipient)}</span>`)
-        .join("")}</div>
+      <p class="meta">by ${escapeHtml(entry.created_by_name)}${doneByText}</p>
+      <div class="chips">${(entry.recipients || []).map((r) => `<span class="chip">${escapeHtml(r)}</span>`).join("")}</div>
     `;
     historyListEl.append(card);
   });
 }
 
 function startTicker() {
-  window.setInterval(() => {
-    if (!groupData.activeAlarms.length) {
-      syncPopupWithCurrentState();
-      return;
+  window.setInterval(async () => {
+    const running = alarms.filter((alarm) => alarm.status === "running");
+    for (const alarm of running) {
+      if (getRemainingSec(alarm) <= 0) {
+        await supabase.from("alarms").update({ status: "ringing" }).eq("id", alarm.id).eq("status", "running");
+      }
     }
 
-    let changed = false;
-    groupData.activeAlarms.forEach((alarm) => {
-      if (alarm.status === "running" && alarm.remainingSec > 0) {
-        alarm.remainingSec -= 1;
-        changed = true;
-      }
-
-      if (alarm.status === "running" && alarm.remainingSec <= 0) {
-        alarm.remainingSec = 0;
-        alarm.status = "ringing";
-        alarm.mutedBy = Array.isArray(alarm.mutedBy) ? alarm.mutedBy : [];
-        changed = true;
-      }
-    });
-
-    if (changed) {
-      persistGroupData();
-      renderAlarms();
-    }
-
+    renderAlarms();
     syncPopupWithCurrentState();
+    updateStartTimerButton();
   }, 1000);
+}
+
+function getRemainingSec(alarm) {
+  if (!alarm.ends_at) return 0;
+  return Math.max(0, Math.ceil((new Date(alarm.ends_at).getTime() - Date.now()) / 1000));
 }
 
 function syncPopupWithCurrentState() {
@@ -373,39 +439,17 @@ function syncPopupWithCurrentState() {
   }
 
   ringingAlarmId = alarm.id;
-  alarmPopupMessageEl.textContent = `"${alarm.message}" is ringing for ${formatDuration(
-    alarm.totalSec
-  )}.`; 
+  alarmPopupMessageEl.textContent = `"${alarm.message}" is ringing for ${formatDuration(alarm.total_sec || 0)}.`;
   alarmPopupEl.classList.remove("hidden");
   startLocalAlarmTone();
 }
 
 function getCurrentRingingAlarm() {
-  return groupData.activeAlarms.find((alarm) => {
-    if (alarm.status !== "ringing") {
-      return false;
-    }
-    const mutedBy = Array.isArray(alarm.mutedBy) ? alarm.mutedBy : [];
+  return alarms.find((alarm) => {
+    if (alarm.status !== "ringing") return false;
+    const mutedBy = Array.isArray(alarm.muted_by) ? alarm.muted_by : [];
     return !mutedBy.includes(deviceId);
   });
-}
-
-function completeAlarmForEveryone(alarm, completedBy) {
-  groupData.history.unshift({
-    id: alarm.id,
-    message: alarm.message,
-    createdBy: alarm.createdBy,
-    recipients: alarm.recipients,
-    durationSec: alarm.totalSec,
-    completedBy,
-    createdAt: Date.now()
-  });
-
-  groupData.activeAlarms = groupData.activeAlarms.filter((entry) => entry.id !== alarm.id);
-  persistGroupData();
-  renderAlarms();
-  renderHistory();
-  hideAlarmPopup();
 }
 
 function hideAlarmPopup() {
@@ -416,42 +460,25 @@ function hideAlarmPopup() {
 
 function unlockAudio() {
   ensureAudioContext();
-  if (!alarmAudioContext) {
-    return;
-  }
-
+  if (!alarmAudioContext) return;
   if (alarmAudioContext.state === "suspended") {
-    alarmAudioContext.resume().catch(() => {
-      // ignore
-    });
+    alarmAudioContext.resume().catch(() => {});
   }
 }
 
 function ensureAudioContext() {
-  if (alarmAudioContext) {
-    return;
-  }
-  if (!window.AudioContext && !window.webkitAudioContext) {
-    return;
-  }
-
+  if (alarmAudioContext) return;
+  if (!window.AudioContext && !window.webkitAudioContext) return;
   const Ctx = window.AudioContext || window.webkitAudioContext;
   alarmAudioContext = new Ctx();
 }
 
 function startLocalAlarmTone() {
   ensureAudioContext();
-  if (!alarmAudioContext) {
-    return;
-  }
-  if (alarmOscillator) {
-    return;
-  }
+  if (!alarmAudioContext || alarmOscillator) return;
 
   if (alarmAudioContext.state === "suspended") {
-    alarmAudioContext.resume().catch(() => {
-      // user gesture may be needed
-    });
+    alarmAudioContext.resume().catch(() => {});
   }
 
   alarmOscillator = alarmAudioContext.createOscillator();
@@ -465,10 +492,7 @@ function startLocalAlarmTone() {
 }
 
 function stopLocalAlarmTone() {
-  if (!alarmOscillator) {
-    return;
-  }
-
+  if (!alarmOscillator) return;
   alarmOscillator.stop();
   alarmOscillator.disconnect();
   alarmGain.disconnect();
@@ -478,38 +502,57 @@ function stopLocalAlarmTone() {
 
 function ensureDeviceId() {
   const existing = localStorage.getItem(DEVICE_ID_KEY);
-  if (existing) {
-    return existing;
-  }
-
+  if (existing) return existing;
   const created = crypto.randomUUID();
   localStorage.setItem(DEVICE_ID_KEY, created);
   return created;
 }
 
-function leaveGroup() {
-  state.myGroupCodes = state.myGroupCodes.filter((entry) => entry !== group.code);
-  localStorage.setItem(APP_STATE_KEY, JSON.stringify(state));
+function getCurrentMemberNameOrRedirect() {
+  const existing = localStorage.getItem(DEVICE_MEMBER_NAME_KEY)?.trim();
+  if (existing) return existing;
+  window.location.href = "index.html?setName=1";
+  throw new Error("Member name is required");
+}
+
+function updateStartTimerButton() {
+  const durationSec = Number(customMinInput.value || 0) * 60 + Number(customSecInput.value || 0);
+  const hasMessage = messageInput.value.trim().length > 0;
+  const hasRecipient = recipientListEl.querySelectorAll("input[type='checkbox']:checked").length > 0;
+  const enabled = durationSec > 0 && hasMessage && hasRecipient;
+
+  startTimerButton.disabled = !enabled;
+  startTimerButton.classList.toggle("is-active", enabled);
+}
+
+async function leaveGroup() {
+  const { error } = await supabase
+    .from("group_members")
+    .delete()
+    .eq("group_code", group.code)
+    .eq("user_id", authUser.id);
+
+  if (error) {
+    setStatus(error.message);
+    return;
+  }
+
   localStorage.removeItem(CURRENT_GROUP_KEY);
   stopLocalAlarmTone();
   window.location.href = "index.html";
 }
 
 function formatDuration(totalSec) {
-  const minutes = Math.floor(totalSec / 60)
+  const safe = Math.max(0, Number(totalSec || 0));
+  const minutes = Math.floor(safe / 60)
     .toString()
     .padStart(2, "0");
-  const seconds = (totalSec % 60).toString().padStart(2, "0");
+  const seconds = (safe % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
 }
 
-function formatRelative(timestamp) {
-  const days = Math.max(1, Math.floor((Date.now() - timestamp) / 86400000));
-  return `${days} day${days > 1 ? "s" : ""} ago`;
-}
-
 function escapeHtml(text) {
-  return text
+  return String(text)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
