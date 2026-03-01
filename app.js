@@ -141,31 +141,62 @@ function setProfileEditing(isEditing) {
 async function refreshMyGroups() {
   if (!authUser) return;
 
-  const { data, error } = await supabase
-    .from("group_members")
-    .select("group_code, groups(code, name)")
-    .eq("user_id", authUser.id)
-    .order("joined_at", { ascending: false });
-
-  if (error) {
-    setStatus(`Could not load groups: ${error.message}`);
-    return;
-  }
-
-  myGroups = (data || [])
-    .map((row) => row.groups)
-    .filter(Boolean);
-
-  render();
-}
-
-async function createGroup() {
+async function joinGroup() {
   updateActionButtons();
-  const groupName = groupNameInput.value.trim();
-  if (!groupName) {
-    setStatus("Please enter a group name.");
+  const code = groupCodeInput.value.trim().toUpperCase();
+
+  if (!/^[0-9A-F]{6}$/.test(code)) {
+    setStatus("Group code must be a 6-character hex code (0-9, A-F).");
     return;
   }
+
+  const { data: group, error: groupErr } = await supabase
+    .from("groups")
+    .select("code, name")
+    .eq("code", code)
+    .maybeSingle();
+
+  if (groupErr) {
+    setStatus(groupErr.message);
+    return;
+  }
+
+  if (!group) {
+    setStatus(`No group found with code ${code}.`);
+    return;
+  }
+
+  const memberName = getCurrentMemberName();
+  const deviceId = ensureDeviceId();
+
+  const { error: memberErr } = await supabase
+    .from("group_members")
+    .upsert(
+      {
+        group_code: code,
+        user_id: authUser.id,
+        member_name: memberName,
+        device_id: deviceId
+      },
+      { onConflict: "group_code,user_id" }
+    );
+
+  if (memberErr) {
+    setStatus(memberErr.message);
+    return;
+  }
+
+  joinForm.reset();
+  updateActionButtons();
+
+  if (typeof refreshMyGroups === "function") {
+    await refreshMyGroups();
+  }
+
+  setStatus(`Joined "${group.name}" (${code}).`);
+  localStorage.setItem(CURRENT_GROUP_KEY, code);
+  window.location.href = `group.html?code=${code}`;
+}
 
   const code = await generateUniqueHexCode();
   const memberName = getCurrentMemberName();
