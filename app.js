@@ -203,14 +203,18 @@ async function createGroup() {
   window.location.href = `group.html?code=${code}`;
 }
 
+
+
 async function joinGroup() {
   updateActionButtons();
   const code = groupCodeInput.value.trim().toUpperCase();
+
   if (!/^[0-9A-F]{6}$/.test(code)) {
     setStatus("Group code must be a 6-character hex code (0-9, A-F).");
     return;
   }
 
+  // 1) Fetch group from Supabase (instead of local state)
   const { data: group, error: groupErr } = await supabase
     .from("groups")
     .select("code, name")
@@ -223,31 +227,38 @@ async function joinGroup() {
   }
 
   if (!group) {
-    setStatus(`No group found for code ${code}.`);
+    setStatus(`No group found with code ${code}.`);
     return;
   }
 
+  // 2) Add membership row for current user (upsert avoids duplicates)
   const memberName = getCurrentMemberName();
   const deviceId = ensureDeviceId();
 
-  const { error: memberErr } = await supabase.from("group_members").upsert(
-    {
-      group_code: code,
-      user_id: authUser.id,
-      member_name: memberName,
-      device_id: deviceId
-    },
-    { onConflict: "group_code,user_id" }
-  );
+  const { error: memberErr } = await supabase
+    .from("group_members")
+    .upsert(
+      {
+        group_code: code,
+        user_id: authUser.id,
+        member_name: memberName,
+        device_id: deviceId
+      },
+      { onConflict: "group_code,user_id" }
+    );
 
   if (memberErr) {
     setStatus(memberErr.message);
     return;
   }
 
+  // 3) Refresh list and navigate
   joinForm.reset();
   updateActionButtons();
-  await refreshMyGroups();
+
+  if (typeof refreshMyGroups === "function") {
+    await refreshMyGroups();
+  }
 
   setStatus(`Joined "${group.name}" (${code}).`);
   localStorage.setItem(CURRENT_GROUP_KEY, code);
