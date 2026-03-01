@@ -174,7 +174,7 @@ async function createGroup() {
   const { error: groupErr } = await supabase.from("groups").insert({
     code,
     name: groupName,
-    created_by: authUser.id
+    created_by_user_id: authUser.id
   });
 
   if (groupErr) {
