@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TickTogether</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>TickTogether</h1>
+      <p class="subtitle">Set one timer and sync it across your selected members' devices.</p>
+
+      <section class="card">
+        <h2>1) Join as a member</h2>
+        <div class="row">
+          <input id="member-name" type="text" maxlength="40" placeholder="Your name (e.g., Alex's Phone)" />
+          <button id="join-btn">Join</button>
+        </div>
+        <p id="member-status" class="status"></p>
+      </section>
+
+      <section class="card">
+        <h2>2) Start a shared timer</h2>
+        <div class="grid">
+          <label>
+            Minutes
+            <input id="minutes" type="number" min="0" value="5" />
+          </label>
+          <label>
+            Seconds
+            <input id="seconds" type="number" min="0" max="59" value="0" />
+          </label>
+        </div>
+        <label>
+          Instruction for members
+          <input id="instruction" type="text" maxlength="200" placeholder="Turn off the stove once timer ends" />
+        </label>
+
+        <label>
+          Select members
+          <select id="member-select" multiple size="6"></select>
+        </label>
+        <small>Tip: leave empty to send to everyone currently connected.</small>
+
+        <button id="start-btn">Start shared timer</button>
+        <p id="timer-status" class="status"></p>
+      </section>
+
+      <section class="card">
+        <h2>Connected members</h2>
+        <ul id="members-list"></ul>
+      </section>
+
+      <section class="card">
+        <h2>Active timers on this device</h2>
+        <ul id="active-timers"></ul>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

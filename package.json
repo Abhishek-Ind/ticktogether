@@ -1,0 +1,10 @@
+{
+  "name": "ticktogether",
+  "version": "1.0.0",
+  "description": "Shared timer app for households",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check public/app.js"
+  }
+}
