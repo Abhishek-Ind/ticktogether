@@ -138,6 +138,14 @@ function setProfileEditing(isEditing) {
   profileActionsEl.hidden = !isEditing;
 }
 
+async function createGroup() {
+  updateActionButtons();
+  const groupName = groupNameInput.value.trim();
+  if (!groupName) {
+    setStatus("Please enter a group name.");
+    return;
+  }
+
 async function refreshMyGroups() {
   if (!authUser) return;
 
