@@ -150,50 +150,34 @@ async function joinGroup() {
     return;
   }
 
-  const { data: group, error: groupErr } = await supabase
-    .from("groups")
-    .select("code, name")
-    .eq("code", code)
-    .maybeSingle();
+  // 1) Try local state first (existing behavior)
+  let group = state.availableGroups.find((entry) => entry.code === code);
 
-  if (groupErr) {
-    setStatus(groupErr.message);
-    return;
-  }
-
+  // 2) If not found locally, try Supabase
   if (!group) {
-    setStatus(`No group found with code ${code}.`);
-    return;
+    const fromDb = await fetchGroupFromSupabase(code);
+    if (!fromDb) {
+      setStatus(`No group found with code ${code}.`);
+      return;
+    }
+
+    group = { code: fromDb.code, name: fromDb.name || "Untitled Group" };
+
+    // add to local cache so it appears in My Groups
+    if (!state.availableGroups.some((entry) => entry.code === group.code)) {
+      state.availableGroups.unshift(group);
+    }
   }
 
-  const memberName = getCurrentMemberName();
-  const deviceId = ensureDeviceId();
-
-  const { error: memberErr } = await supabase
-    .from("group_members")
-    .upsert(
-      {
-        group_code: code,
-        user_id: authUser.id,
-        member_name: memberName,
-        device_id: deviceId
-      },
-      { onConflict: "group_code,user_id" }
-    );
-
-  if (memberErr) {
-    setStatus(memberErr.message);
-    return;
+  if (!state.myGroupCodes.includes(code)) {
+    state.myGroupCodes.unshift(code);
+    persistState();
+    render();
+    joinForm.reset();
+    setStatus(`Joined "${group.name}" (${code}).`);
   }
 
-  joinForm.reset();
   updateActionButtons();
-
-  if (typeof refreshMyGroups === "function") {
-    await refreshMyGroups();
-  }
-
-  setStatus(`Joined "${group.name}" (${code}).`);
   localStorage.setItem(CURRENT_GROUP_KEY, code);
   window.location.href = `group.html?code=${code}`;
 }
@@ -310,6 +294,38 @@ function openNameModal() {
   nameModalInput.value = "";
   nameModal.showModal();
   nameModalInput.focus();
+}
+
+async function fetchGroupFromSupabase(code) {
+  const baseUrl = window.__SUPABASE_URL__;
+  const anonKey = window.__SUPABASE_ANON_KEY__;
+
+  // If not configured, just skip DB fallback
+  if (!baseUrl || !anonKey) {
+    return null;
+  }
+
+  const url = `${baseUrl}/rest/v1/groups?code=eq.${encodeURIComponent(code)}&select=code,name&limit=1`;
+
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const rows = await response.json();
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  } catch {
+    return null;
+  }
 }
 
 function render() {
