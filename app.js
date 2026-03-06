@@ -138,6 +138,27 @@ function setProfileEditing(isEditing) {
   profileActionsEl.hidden = !isEditing;
 }
 
+async function refreshMyGroups() {
+  if (!authUser) return;
+
+  const { data, error } = await supabase
+    .from("group_members")
+    .select("group_code, groups(code, name)")
+    .eq("user_id", authUser.id)
+    .order("joined_at", { ascending: false });
+
+  if (error) {
+    setStatus(`Could not load groups: ${error.message}`);
+    return;
+  }
+
+  myGroups = (data || [])
+    .map((row) => row.groups)
+    .filter(Boolean);
+
+  render();
+}
+
 async function createGroup() {
   updateActionButtons();
   const groupName = groupNameInput.value.trim();
@@ -145,50 +166,6 @@ async function createGroup() {
     setStatus("Please enter a group name.");
     return;
   }
-
-async function refreshMyGroups() {
-  if (!authUser) return;
-
-async function joinGroup() {
-  updateActionButtons();
-  const code = groupCodeInput.value.trim().toUpperCase();
-
-  if (!/^[0-9A-F]{6}$/.test(code)) {
-    setStatus("Group code must be a 6-character hex code (0-9, A-F).");
-    return;
-  }
-
-  // 1) Try local state first (existing behavior)
-  let group = state.availableGroups.find((entry) => entry.code === code);
-
-  // 2) If not found locally, try Supabase
-  if (!group) {
-    const fromDb = await fetchGroupFromSupabase(code);
-    if (!fromDb) {
-      setStatus(`No group found with code ${code}.`);
-      return;
-    }
-
-    group = { code: fromDb.code, name: fromDb.name || "Untitled Group" };
-
-    // add to local cache so it appears in My Groups
-    if (!state.availableGroups.some((entry) => entry.code === group.code)) {
-      state.availableGroups.unshift(group);
-    }
-  }
-
-  if (!state.myGroupCodes.includes(code)) {
-    state.myGroupCodes.unshift(code);
-    persistState();
-    render();
-    joinForm.reset();
-    setStatus(`Joined "${group.name}" (${code}).`);
-  }
-
-  updateActionButtons();
-  localStorage.setItem(CURRENT_GROUP_KEY, code);
-  window.location.href = `group.html?code=${code}`;
-}
 
   const code = await generateUniqueHexCode();
   const memberName = getCurrentMemberName();
@@ -225,8 +202,6 @@ async function joinGroup() {
   localStorage.setItem(CURRENT_GROUP_KEY, code);
   window.location.href = `group.html?code=${code}`;
 }
-
-
 
 async function joinGroup() {
   updateActionButtons();
