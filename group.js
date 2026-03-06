@@ -44,6 +44,7 @@ let alarmAudioContext;
 let alarmOscillator;
 let alarmGain;
 let realtimeChannel = null;
+let pendingAlarmRetry = false;
 
 await init();
 
@@ -163,6 +164,7 @@ alarmForm.addEventListener("submit", async (event) => {
 });
 
 taskDoneButton.addEventListener("click", async () => {
+  unlockAudio();
   const alarm = getCurrentRingingAlarm();
   if (!alarm) {
     hideAlarmPopup();
@@ -187,6 +189,7 @@ taskDoneButton.addEventListener("click", async () => {
 });
 
 muteAlarmButton.addEventListener("click", async () => {
+  unlockAudio();
   const alarm = getCurrentRingingAlarm();
   if (!alarm) {
     hideAlarmPopup();
@@ -469,7 +472,13 @@ function unlockAudio() {
   ensureAudioContext();
   if (!alarmAudioContext) return;
   if (alarmAudioContext.state === "suspended") {
-    alarmAudioContext.resume().catch(() => {});
+    alarmAudioContext.resume().then(() => {
+      // If a tone was waiting for the context to unlock, start it now
+      if (pendingAlarmRetry) {
+        pendingAlarmRetry = false;
+        startLocalAlarmTone();
+      }
+    }).catch(() => {});
   }
 }
 
@@ -480,25 +489,52 @@ function ensureAudioContext() {
   alarmAudioContext = new Ctx();
 }
 
-function startLocalAlarmTone() {
+async function startLocalAlarmTone() {
   ensureAudioContext();
   if (!alarmAudioContext || alarmOscillator) return;
 
   if (alarmAudioContext.state === "suspended") {
-    alarmAudioContext.resume().catch(() => {});
+    try {
+      await alarmAudioContext.resume();
+    } catch {}
   }
 
-  alarmOscillator = alarmAudioContext.createOscillator();
-  alarmGain = alarmAudioContext.createGain();
-  alarmOscillator.type = "sine";
+  // Still suspended — browser is blocking audio until a user gesture.
+  // Set a flag so unlockAudio() retries as soon as the user taps anything.
+  if (alarmAudioContext.state !== "running") {
+    pendingAlarmRetry = true;
+    return;
+  }
+
+  const ctx = alarmAudioContext;
+  const now = ctx.currentTime;
+
+  alarmOscillator = ctx.createOscillator();
+  alarmGain = ctx.createGain();
+
+  // Square wave at 880 Hz gives a sharp, attention-grabbing tone
+  alarmOscillator.type = "square";
   alarmOscillator.frequency.value = 880;
-  alarmGain.gain.value = 0.12;
+
+  // Schedule a pulsing beep: 0.5 s on, 0.3 s off, repeat
+  const ON = 0.5;
+  const OFF = 0.3;
+  const PERIOD = ON + OFF;
+  const BEATS = 120; // covers 96 seconds
+  alarmGain.gain.setValueAtTime(0, now);
+  for (let i = 0; i < BEATS; i++) {
+    const t = now + i * PERIOD;
+    alarmGain.gain.setValueAtTime(0.55, t);
+    alarmGain.gain.setValueAtTime(0, t + ON);
+  }
+
   alarmOscillator.connect(alarmGain);
-  alarmGain.connect(alarmAudioContext.destination);
-  alarmOscillator.start();
+  alarmGain.connect(ctx.destination);
+  alarmOscillator.start(now);
 }
 
 function stopLocalAlarmTone() {
+  pendingAlarmRetry = false;
   if (!alarmOscillator) return;
   alarmOscillator.stop();
   alarmOscillator.disconnect();
