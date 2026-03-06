@@ -212,17 +212,9 @@ async function joinGroup() {
     return;
   }
 
-  // 1) Fetch group from Supabase (instead of local state)
-  const { data: group, error: groupErr } = await supabase
-    .from("groups")
-    .select("code, name")
-    .eq("code", code)
-    .maybeSingle();
-
-  if (groupErr) {
-    setStatus(groupErr.message);
-    return;
-  }
+  // 1) Fetch group — use direct REST call with anon key so RLS on the
+  //    groups table (which may require membership) doesn't block the lookup.
+  const group = await fetchGroupFromSupabase(code);
 
   if (!group) {
     setStatus(`No group found with code ${code}.`);
