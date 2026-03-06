@@ -239,7 +239,31 @@ async function joinGroup() {
     return;
   }
 
-  // 2) Now that we're a member, RLS allows us to read the group name
+  // 2) Check that no other member in this group already has this name.
+  //    Member names are used as the recipient identity for alarms, so
+  //    duplicates would let one user impersonate another.
+  const { data: nameTaken } = await supabase
+    .from("group_members")
+    .select("user_id")
+    .eq("group_code", code)
+    .eq("member_name", memberName)
+    .neq("user_id", authUser.id)
+    .maybeSingle();
+
+  if (nameTaken) {
+    // Roll back our membership row so the group stays clean
+    await supabase
+      .from("group_members")
+      .delete()
+      .eq("group_code", code)
+      .eq("user_id", authUser.id);
+    setStatus(
+      `The name "${memberName}" is already taken in this group. Change your name (Your Name section) and try again.`
+    );
+    return;
+  }
+
+  // 3) Now that we're a member, RLS allows us to read the group name
   const { data: group } = await supabase
     .from("groups")
     .select("code, name")
@@ -376,12 +400,9 @@ async function generateUniqueHexCode() {
 }
 
 function randomHexCode() {
-  const alphabet = "0123456789ABCDEF";
-  let code = "";
-  for (let i = 0; i < 6; i += 1) {
-    code += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
-  return code;
+  // crypto.getRandomValues is cryptographically secure, unlike Math.random()
+  const bytes = crypto.getRandomValues(new Uint8Array(3));
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0").toUpperCase()).join("");
 }
 
 function ensureDeviceId() {

@@ -6,6 +6,7 @@
     <title>Group Timers</title>
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#5f47dd" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://esm.sh; connect-src 'self' https://ojuouvfractsloqozlyh.supabase.co wss://ojuouvfractsloqozlyh.supabase.co; style-src 'self'; img-src 'self' data:; worker-src 'self'">
     <link rel="apple-touch-icon" href="icon-192.png" />
     <link rel="stylesheet" href="group.css" />
   </head>
@@ -123,16 +124,9 @@
       </div>
     </section>
 
-        <script>
-  window.__SUPABASE_URL__ = "https://ojuouvfractsloqozlyh.supabase.co";
-  window.__SUPABASE_ANON_KEY__ = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdW91dmZyYWN0c2xvcW96bHloIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNDcyNTYsImV4cCI6MjA4NzkyMzI1Nn0.cxaxSlZ7YpQohAT-dvujjvYzo8uRBExolakCoV-AExY";
-</script>
-<script type="module" src="group.js"></script>
-    <script>
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.register("./sw.js");
-      }
-    </script>
+    <script src="config.js"></script>
+    <script type="module" src="group.js"></script>
+    <script src="register-sw.js" defer></script>
   </body>
 </html>
 
