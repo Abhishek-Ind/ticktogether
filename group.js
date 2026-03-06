@@ -203,7 +203,7 @@ muteAlarmButton.addEventListener("click", async () => {
   }
 
   const muted = Array.isArray(alarm.muted_by) ? [...alarm.muted_by] : [];
-  if (!muted.includes(deviceId)) muted.push(deviceId);
+  if (!muted.includes(authUser.id)) muted.push(authUser.id);
 
   const { error } = await supabase.from("alarms").update({ muted_by: muted }).eq("id", alarm.id);
   if (error) {
@@ -211,7 +211,7 @@ muteAlarmButton.addEventListener("click", async () => {
     return;
   }
 
-  setStatus(`Muted alarm on this device for "${alarm.message}".`);
+  setStatus(`Muted alarm for "${alarm.message}".`);
 });
 
 leaveTopButton.addEventListener("click", leaveGroup);
@@ -288,11 +288,18 @@ async function ensureCurrentMemberJoined() {
     );
   }
 
-  await supabase
+  const { error: updateErr } = await supabase
     .from("group_members")
     .update({ member_name: currentMemberName, device_id: deviceId })
     .eq("group_code", group.code)
     .eq("user_id", authUser.id);
+
+  // Race condition: another user claimed the same name between our check and the update.
+  if (updateErr?.code === "23505") {
+    throw new Error(
+      `The name "${currentMemberName}" is already taken in this group. Go back and change your name before rejoining.`
+    );
+  }
 }
 
 async function refreshAll() {
@@ -479,7 +486,9 @@ function getCurrentRingingAlarm() {
   return alarms.find((alarm) => {
     if (alarm.status !== "ringing") return false;
     const mutedBy = Array.isArray(alarm.muted_by) ? alarm.muted_by : [];
-    return !mutedBy.includes(deviceId);
+    // Use authenticated user ID (not deviceId) so muting is tied to the
+    // user's identity rather than a spoofable localStorage value.
+    return !mutedBy.includes(authUser?.id);
   });
 }
 
