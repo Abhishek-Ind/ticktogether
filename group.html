@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Group Timers</title>
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#0f0f0f" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
     <link rel="stylesheet" href="group.css" />
   </head>
   <body>
@@ -110,8 +113,11 @@
   window.__SUPABASE_ANON_KEY__ = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9qdW91dmZyYWN0c2xvcW96bHloIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIzNDcyNTYsImV4cCI6MjA4NzkyMzI1Nn0.cxaxSlZ7YpQohAT-dvujjvYzo8uRBExolakCoV-AExY";
 </script>
 <script type="module" src="group.js"></script>
-
-
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("./sw.js");
+      }
+    </script>
   </body>
 </html>
 
