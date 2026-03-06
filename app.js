@@ -212,16 +212,8 @@ async function joinGroup() {
     return;
   }
 
-  // 1) Fetch group — use direct REST call with anon key so RLS on the
-  //    groups table (which may require membership) doesn't block the lookup.
-  const group = await fetchGroupFromSupabase(code);
-
-  if (!group) {
-    setStatus(`No group found with code ${code}.`);
-    return;
-  }
-
-  // 2) Add membership row for current user (upsert avoids duplicates)
+  // 1) Attempt membership upsert directly. The FK constraint on group_code
+  //    will fail if the group doesn't exist, avoiding an RLS-blocked pre-check.
   const memberName = getCurrentMemberName();
   const deviceId = ensureDeviceId();
 
@@ -238,9 +230,21 @@ async function joinGroup() {
     );
 
   if (memberErr) {
-    setStatus(memberErr.message);
+    // FK violation means the group code doesn't exist
+    if (memberErr.code === "23503") {
+      setStatus(`No group found with code ${code}.`);
+    } else {
+      setStatus(memberErr.message);
+    }
     return;
   }
+
+  // 2) Now that we're a member, RLS allows us to read the group name
+  const { data: group } = await supabase
+    .from("groups")
+    .select("code, name")
+    .eq("code", code)
+    .maybeSingle();
 
   // 3) Refresh list and navigate
   joinForm.reset();
@@ -250,7 +254,8 @@ async function joinGroup() {
     await refreshMyGroups();
   }
 
-  setStatus(`Joined "${group.name}" (${code}).`);
+  const groupName = group?.name ?? code;
+  setStatus(`Joined "${groupName}" (${code}).`);
   localStorage.setItem(CURRENT_GROUP_KEY, code);
   window.location.href = `group.html?code=${code}`;
 }
