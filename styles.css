@@ -220,6 +220,25 @@ input::placeholder {
   margin: 16px 0 0;
 }
 
+.scroll-box {
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.scroll-box::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scroll-box::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-box::-webkit-scrollbar-thumb {
+  background: #c4c9d8;
+  border-radius: 4px;
+}
+
 .profile-card {
   margin-top: 0;
 }
