@@ -233,6 +233,12 @@ async function joinGroup() {
     // FK violation means the group code doesn't exist
     if (memberErr.code === "23503") {
       setStatus(`No group found with code ${code}.`);
+    } else if (memberErr.code === "23505") {
+      // Unique constraint on (group_code, member_name): hit the race-condition
+      // window where two users tried to join with the same name simultaneously.
+      setStatus(
+        `The name "${memberName}" is already taken in this group. Change your name and try again.`
+      );
     } else {
       setStatus(memberErr.message);
     }

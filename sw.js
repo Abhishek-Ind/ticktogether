@@ -49,7 +49,9 @@ self.addEventListener("push", (event) => {
     renotify: true,                 // vibrate/sound even if replacing same tag
     requireInteraction: true,       // stay visible until user taps it
     data: {
-      url: data.groupCode
+      // Validate the code format before embedding it in a URL to prevent
+      // a malformed push payload from injecting unexpected query parameters.
+      url: /^[0-9A-F]{6}$/.test(data.groupCode ?? "")
         ? `./group.html?code=${data.groupCode}`
         : "./group.html",
     },
