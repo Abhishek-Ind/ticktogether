@@ -12,6 +12,7 @@ const activeAlarmsEl = document.querySelector("#active-alarms");
 const historyListEl = document.querySelector("#history-list");
 const statusEl = document.querySelector("#status");
 const leaveTopButton = document.querySelector("#leave-group-top");
+const deleteGroupButton = document.querySelector("#delete-group-top");
 const copyCodeButton = document.querySelector("#copy-code");
 
 const modal = document.querySelector("#timer-modal");
@@ -62,6 +63,10 @@ async function init() {
     group = await getActiveGroupFromDb();
     groupNameEl.textContent = group.name;
     groupCodeEl.textContent = group.code;
+
+    if (group.created_by_user_id === authUser.id) {
+      deleteGroupButton.hidden = false;
+    }
 
     await ensureCurrentMemberJoined();
     await refreshAll();
@@ -201,6 +206,7 @@ muteAlarmButton.addEventListener("click", async () => {
 });
 
 leaveTopButton.addEventListener("click", leaveGroup);
+deleteGroupButton.addEventListener("click", deleteGroup);
 
 copyCodeButton.addEventListener("click", async () => {
   try {
@@ -234,7 +240,7 @@ async function getActiveGroupFromDb() {
 
   const { data: groupRow, error: groupErr } = await supabase
     .from("groups")
-    .select("code, name")
+    .select("code, name, created_by_user_id")
     .eq("code", code)
     .maybeSingle();
 
@@ -325,7 +331,8 @@ function renderAll() {
 
 function renderMembers() {
   memberListEl.innerHTML = "";
-  memberCountEl.textContent = `${members.length} member${members.length === 1 ? "" : "s"}`;
+  const n = members.length;
+  memberCountEl.textContent = `${n} member${n === 1 ? "" : "s"}`;
 
   members.forEach((member) => {
     const chip = document.createElement("span");
@@ -365,11 +372,11 @@ function renderAlarms() {
       <p class="meta">by ${escapeHtml(alarm.created_by_name)}</p>
       <div class="chips">${(alarm.recipients || []).map((r) => `<span class="chip">${escapeHtml(r)}</span>`).join("")}</div>
       <div class="actions">
-        <button class="mini-btn stop-all" type="button">Stop For All</button>
+        <button class="stop-all-btn" type="button">Stop For All</button>
       </div>
     `;
 
-    card.querySelector(".stop-all").addEventListener("click", async () => {
+    card.querySelector(".stop-all-btn").addEventListener("click", async () => {
       const { error } = await supabase
         .from("alarms")
         .update({
@@ -523,6 +530,47 @@ function updateStartTimerButton() {
 
   startTimerButton.disabled = !enabled;
   startTimerButton.classList.toggle("is-active", enabled);
+}
+
+async function deleteGroup() {
+  const confirmed = window.confirm(
+    `Delete "${group.name}"? This will remove the group and all its timers for everyone.`
+  );
+  if (!confirmed) return;
+
+  const { error: alarmsErr } = await supabase
+    .from("alarms")
+    .delete()
+    .eq("group_code", group.code);
+
+  if (alarmsErr) {
+    setStatus(alarmsErr.message);
+    return;
+  }
+
+  const { error: membersErr } = await supabase
+    .from("group_members")
+    .delete()
+    .eq("group_code", group.code);
+
+  if (membersErr) {
+    setStatus(membersErr.message);
+    return;
+  }
+
+  const { error: groupErr } = await supabase
+    .from("groups")
+    .delete()
+    .eq("code", group.code);
+
+  if (groupErr) {
+    setStatus(groupErr.message);
+    return;
+  }
+
+  localStorage.removeItem(CURRENT_GROUP_KEY);
+  stopLocalAlarmTone();
+  window.location.href = "index.html";
 }
 
 async function leaveGroup() {

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Group Timers</title>
     <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#0f0f0f" />
+    <meta name="theme-color" content="#5f47dd" />
     <link rel="apple-touch-icon" href="icon-192.png" />
     <link rel="stylesheet" href="group.css" />
   </head>
@@ -27,7 +27,16 @@
         </div>
       </div>
       <div class="header-actions">
-        <p><span id="member-count">0</span> members</p>
+        <p id="member-count">0 members</p>
+        <button id="delete-group-top" class="icon-btn exit-icon-btn delete-icon-btn" type="button" aria-label="Delete group" hidden>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+            <path d="M10 11v6"></path>
+            <path d="M14 11v6"></path>
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+          </svg>
+        </button>
         <button id="leave-group-top" class="icon-btn exit-icon-btn" type="button" aria-label="Leave group">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -41,17 +50,23 @@
     <main class="group-page">
       <section>
         <h2>Group Timers</h2>
-        <div id="active-alarms" class="card-stack"></div>
+        <div class="scroll-box">
+          <div id="active-alarms" class="card-stack"></div>
+        </div>
       </section>
 
       <section>
         <h2>Members</h2>
-        <div id="member-list" class="chips"></div>
+        <div class="scroll-box">
+          <div id="member-list" class="chips"></div>
+        </div>
       </section>
 
       <section>
         <h2>History</h2>
-        <div id="history-list" class="card-stack"></div>
+        <div class="scroll-box">
+          <div id="history-list" class="card-stack"></div>
+        </div>
       </section>
 
       <p id="status" class="status" role="status" aria-live="polite"></p>

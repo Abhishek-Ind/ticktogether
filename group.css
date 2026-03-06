@@ -256,6 +256,7 @@ textarea {
 
 .start-btn.is-active {
   background: #5e4be0;
+  filter: saturate(1.05);
   box-shadow: 0 4px 10px rgba(95, 71, 221, 0.24);
 }
 
@@ -309,24 +310,31 @@ textarea {
 }
 
 .stop-all-btn {
-  border: 1px solid #d8dcee;
-  background: #f3f0ff;
-  color: var(--accent);
+  border: none;
+  background: #9f93e8;
+  color: #fff;
   border-radius: 12px;
   min-height: 42px;
-  padding: 0 14px;
+  padding: 0 18px;
   font-weight: 600;
+  font-size: 1rem;
   cursor: pointer;
-  transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
+  transition: background 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
 .stop-all-btn:hover {
-  background: #ece7ff;
-  border-color: #cfc6ff;
+  background: #7c6de0;
 }
 
 .stop-all-btn:active {
+  background: #5e4be0;
   transform: translateY(1px);
+}
+
+.stop-all-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .alarm-popup {
@@ -362,6 +370,35 @@ textarea {
 .alarm-popup-actions {
   display: grid;
   gap: 10px;
+}
+
+.scroll-box {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.scroll-box::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scroll-box::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-box::-webkit-scrollbar-thumb {
+  background: #c4c9d8;
+  border-radius: 4px;
+}
+
+.delete-icon-btn {
+  color: #c0392b;
+  border-color: #f5c6c2;
+  background: #fef2f1;
+}
+
+.delete-icon-btn:hover {
+  background: #fde0dd;
 }
 
 @media (max-width: 700px) {
