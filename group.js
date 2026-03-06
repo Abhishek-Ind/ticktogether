@@ -1,6 +1,10 @@
 import { supabase, ensureSession } from "./supabaseClient.js";
 
 const CURRENT_GROUP_KEY = "ticktogether.currentGroupCode";
+
+// Public VAPID key — must match VAPID_PUBLIC_KEY secret set on the Edge Function.
+const VAPID_PUBLIC_KEY =
+  "BDXfQJAwGb1esAuIVv_Xtx4STaU2P-TPJQj68mSvzDu9bGO4rNLsHgqzbVkd4P45bzDj0YKClYEFhV1E6v_rDik";
 const DEVICE_ID_KEY = "ticktogether.deviceId";
 const DEVICE_MEMBER_NAME_KEY = "ticktogether.deviceMemberName";
 
@@ -75,6 +79,8 @@ async function init() {
     startTicker();
     syncPopupWithCurrentState();
     updateStartTimerButton();
+    // Non-blocking: push setup failure must not break the app
+    subscribeToAlarmPush().catch(() => {});
   } catch (error) {
     setStatus(error.message);
     window.location.href = "index.html";
@@ -625,6 +631,49 @@ async function leaveGroup() {
   stopLocalAlarmTone();
   window.location.href = "index.html";
 }
+
+// ── Push Notification subscription ────────────────────────────────────────────
+
+async function subscribeToAlarmPush() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") return;
+
+  const registration = await navigator.serviceWorker.ready;
+
+  // Re-use an existing subscription if one is already registered for this device
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
+  }
+
+  // Store (or refresh) the subscription in Supabase so the edge function can
+  // look it up by group_code + member_name when an alarm rings.
+  await supabase.from("push_subscriptions").upsert(
+    {
+      group_code: group.code,
+      user_id: authUser.id,
+      member_name: currentMemberName,
+      subscription: subscription.toJSON(),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "group_code,user_id" }
+  );
+}
+
+// The Push API requires the VAPID public key as a Uint8Array.
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 function formatDuration(totalSec) {
   const safe = Math.max(0, Number(totalSec || 0));

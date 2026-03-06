@@ -1,4 +1,4 @@
-const CACHE = "ticktogether-v1";
+const CACHE = "ticktogether-v2";
 const STATIC = [
   "./",
   "./index.html",
@@ -28,6 +28,57 @@ self.addEventListener("activate", (event) => {
   );
   self.clients.claim();
 });
+
+// ── Push Notifications ────────────────────────────────────────────────────────
+
+// Called by the Supabase alarm-push Edge Function when an alarm becomes ringing.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data?.json() ?? {};
+  } catch {}
+
+  const title = data.title || "⏰ Alarm ringing";
+  const options = {
+    body: data.body || "A timer has completed.",
+    icon: "./icon-192.png",
+    badge: "./icon-192.png",
+    tag: data.alarmId || "alarm",   // replace any existing notification for same alarm
+    renotify: true,                 // vibrate/sound even if replacing same tag
+    requireInteraction: true,       // stay visible until user taps it
+    data: {
+      url: data.groupCode
+        ? `./group.html?code=${data.groupCode}`
+        : "./group.html",
+    },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Tapping the notification opens (or focuses) the group page.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || "./group.html";
+
+  event.waitUntil(
+    clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((windowClients) => {
+        // If a group page tab is already open, focus it
+        for (const client of windowClients) {
+          if (client.url.includes("group.html") && "focus" in client) {
+            client.navigate(target);
+            return client.focus();
+          }
+        }
+        // Otherwise open a new tab
+        return clients.openWindow(target);
+      })
+  );
+});
+
+// ── Network-first fetch ────────────────────────────────────────────────────────
 
 // Network-first: always try network, fall back to cache for static assets
 self.addEventListener("fetch", (event) => {
