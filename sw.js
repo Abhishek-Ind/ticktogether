@@ -8,6 +8,8 @@ const STATIC = [
   "./styles.css",
   "./group.css",
   "./supabaseClient.js",
+  "./config.js",
+  "./register-sw.js",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png"

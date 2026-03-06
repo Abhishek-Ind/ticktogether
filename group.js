@@ -273,6 +273,21 @@ async function ensureCurrentMemberJoined() {
     throw new Error("Membership missing.");
   }
 
+  // Reject if another member already holds this name — prevents impersonation.
+  const { data: nameTaken } = await supabase
+    .from("group_members")
+    .select("user_id")
+    .eq("group_code", group.code)
+    .eq("member_name", currentMemberName)
+    .neq("user_id", authUser.id)
+    .maybeSingle();
+
+  if (nameTaken) {
+    throw new Error(
+      `The name "${currentMemberName}" is already taken in this group. Go back and change your name before rejoining.`
+    );
+  }
+
   await supabase
     .from("group_members")
     .update({ member_name: currentMemberName, device_id: deviceId })
