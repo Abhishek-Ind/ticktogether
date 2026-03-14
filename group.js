@@ -485,9 +485,12 @@ function syncPopupWithCurrentState() {
 function getCurrentRingingAlarm() {
   return alarms.find((alarm) => {
     if (alarm.status !== "ringing") return false;
+    // Only show the popup / play audio if this user is an intended recipient.
+    // The alarm-push Edge Function already uses this same recipients list to
+    // decide who gets a push notification; keep in-page behaviour consistent.
+    const recipients = Array.isArray(alarm.recipients) ? alarm.recipients : [];
+    if (!recipients.includes(currentMemberName)) return false;
     const mutedBy = Array.isArray(alarm.muted_by) ? alarm.muted_by : [];
-    // Use authenticated user ID (not deviceId) so muting is tied to the
-    // user's identity rather than a spoofable localStorage value.
     return !mutedBy.includes(authUser?.id);
   });
 }
