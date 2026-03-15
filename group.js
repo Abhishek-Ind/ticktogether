@@ -450,11 +450,30 @@ function renderHistory() {
 }
 
 function startTicker() {
-  window.setInterval(() => {
+  window.setInterval(async () => {
     renderAlarms();
     syncPopupWithCurrentState();
     updateStartTimerButton();
+    await tickOverdueAlarmsLocally();
   }, 1000);
+}
+
+// Client-side safety: transition any overdue "running" alarms to "ringing" immediately.
+// The conditional .eq("status","running") prevents duplicate transitions when multiple
+// clients are open simultaneously. pg_cron (migration 003) is the server-side backup
+// for when no client has the app open — this just removes the up-to-60s delay.
+async function tickOverdueAlarmsLocally() {
+  const now = new Date().toISOString();
+  const overdue = alarms.filter(
+    (a) => a.status === "running" && a.ends_at && a.ends_at <= now
+  );
+  for (const alarm of overdue) {
+    await supabase
+      .from("alarms")
+      .update({ status: "ringing" })
+      .eq("id", alarm.id)
+      .eq("status", "running"); // idempotent: no-op if already transitioned
+  }
 }
 
 function getRemainingSec(alarm) {
