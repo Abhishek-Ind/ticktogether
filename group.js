@@ -450,14 +450,7 @@ function renderHistory() {
 }
 
 function startTicker() {
-  window.setInterval(async () => {
-    const running = alarms.filter((alarm) => alarm.status === "running");
-    for (const alarm of running) {
-      if (getRemainingSec(alarm) <= 0) {
-        await supabase.from("alarms").update({ status: "ringing" }).eq("id", alarm.id).eq("status", "running");
-      }
-    }
-
+  window.setInterval(() => {
     renderAlarms();
     syncPopupWithCurrentState();
     updateStartTimerButton();
