@@ -4,7 +4,7 @@ const CURRENT_GROUP_KEY = "ticktogether.currentGroupCode";
 
 // Public VAPID key — must match VAPID_PUBLIC_KEY secret set on the Edge Function.
 const VAPID_PUBLIC_KEY =
-  "BDXfQJAwGb1esAuIVv_Xtx4STaU2P-TPJQj68mSvzDu9bGO4rNLsHgqzbVkd4P45bzDj0YKClYEFhV1E6v_rDik";
+  "BO10VELyKSDAfdgfO629QDhEOlp31KmM5D9NJOhrcKuYcOkfupoP0aTy8UkiK0aRsCOzcCYs_J1wyEWrZNOGlSI";
 const DEVICE_ID_KEY = "ticktogether.deviceId";
 const DEVICE_MEMBER_NAME_KEY = "ticktogether.deviceMemberName";
 
